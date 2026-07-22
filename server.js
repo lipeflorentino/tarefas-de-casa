@@ -27,6 +27,13 @@ app.get('/api/vapid-public-key', (req, res) => {
   res.json({ publicKey: process.env.VAPID_PUBLIC_KEY });
 });
 
+// placar de pontos acumulados
+app.get('/api/points', async (req, res) => {
+  const { data, error } = await supabase.from('user_points').select('*');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
 // listar tarefas
 app.get('/api/tasks', async (req, res) => {
   const { data, error } = await supabase
@@ -39,27 +46,56 @@ app.get('/api/tasks', async (req, res) => {
 
 // criar tarefa
 app.post('/api/tasks', async (req, res) => {
-  const { title, description, due_date, type, assigned_to } = req.body;
-  if (!title || !due_date || !type || !assigned_to) {
-    return res.status(400).json({ error: 'title, due_date, type e assigned_to são obrigatórios' });
+  const { title, description, due_date, type, assigned_to, points } = req.body;
+  if (!title || !due_date || !type || !assigned_to || points === undefined || points === null || points === '') {
+    return res.status(400).json({ error: 'title, due_date, type, assigned_to e points são obrigatórios' });
   }
   const { data, error } = await supabase
     .from('tasks')
-    .insert([{ title, description: description || null, due_date, type, assigned_to }])
+    .insert([{ title, description: description || null, due_date, type, assigned_to, points: Number(points) }])
     .select();
   if (error) return res.status(500).json({ error: error.message });
 
-  await notifyUser(assigned_to, 'Nova tarefa', `${title} — prazo ${due_date}`);
+  const prazo = new Date(due_date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  await notifyUser(assigned_to, 'Nova tarefa', `${title} — prazo ${prazo} (${points} pts)`);
 
   res.status(201).json(data[0]);
 });
 
-// concluir (= apagar, sem histórico) tarefa
+// concluir (= apagar, sem histórico) tarefa — quem completa ganha os pontos
 app.delete('/api/tasks/:id', async (req, res) => {
-  const { error } = await supabase.from('tasks').delete().eq('id', req.params.id);
-  if (error) return res.status(500).json({ error: error.message });
+  const { completed_by } = req.body || {};
+
+  const { data: task, error: fetchError } = await supabase
+    .from('tasks')
+    .select('points')
+    .eq('id', req.params.id)
+    .single();
+  if (fetchError) return res.status(500).json({ error: fetchError.message });
+
+  const { error: delError } = await supabase.from('tasks').delete().eq('id', req.params.id);
+  if (delError) return res.status(500).json({ error: delError.message });
+
+  if (completed_by && task && task.points) {
+    await addPoints(completed_by, task.points);
+  }
+
   res.status(204).end();
 });
+
+async function addPoints(userName, points) {
+  const { data } = await supabase
+    .from('user_points')
+    .select('points')
+    .eq('user_name', userName)
+    .single();
+
+  const current = data ? data.points : 0;
+  const { error } = await supabase
+    .from('user_points')
+    .upsert([{ user_name: userName, points: current + points }], { onConflict: 'user_name' });
+  if (error) console.error('Erro ao atualizar pontos de', userName, error.message);
+}
 
 // salvar inscrição de push de um usuário
 app.post('/api/subscribe', async (req, res) => {
@@ -76,14 +112,23 @@ app.post('/api/subscribe', async (req, res) => {
 
 // verificação de prazos — chamar via cron externo (ex: cron-job.org) a cada hora
 app.get('/api/check-reminders', async (req, res) => {
-  const today = new Date().toISOString().slice(0, 10);
-  const { data: tasks, error } = await supabase.from('tasks').select('*').lte('due_date', today);
+  const now = new Date();
+  const endOfToday = new Date(now);
+  endOfToday.setHours(23, 59, 59, 999);
+
+  const { data: tasks, error } = await supabase
+    .from('tasks')
+    .select('*')
+    .lte('due_date', endOfToday.toISOString());
   if (error) return res.status(500).json({ error: error.message });
 
   for (const task of tasks) {
-    const overdue = task.due_date < today;
+    const dueDate = new Date(task.due_date);
+    const overdue = dueDate < now;
     const label = overdue ? 'ATRASADA' : 'VENCE HOJE';
-    await notifyUser(task.assigned_to, `${label}: ${task.title}`, task.description || '');
+    const horario = dueDate.toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const corpo = `${task.description || ''} (${horario}, ${task.points} pts)`.trim();
+    await notifyUser(task.assigned_to, `${label}: ${task.title}`, corpo);
   }
 
   res.json({ checked: tasks.length });

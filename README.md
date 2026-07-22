@@ -82,6 +82,30 @@ O endpoint `GET /api/check-reminders` verifica tarefas vencendo hoje ou atrasada
 - Tarefas vencendo hoje ou atrasadas (borda vermelha) geram lembrete automático a cada verificação do cron.
 - Tocar em **"✅ Concluir"** apaga a tarefa permanentemente — não há histórico.
 
+## Atualização: pontuação e prazo com hora
+
+Se você já tinha o banco criado antes, rode esta migração no **SQL Editor** do Supabase (não apaga tarefas existentes):
+
+```sql
+-- prazo passa a ter data e hora
+alter table tasks alter column due_date type timestamptz using due_date::timestamptz;
+
+-- pontos de cada tarefa
+alter table tasks add column points integer not null default 0;
+
+-- placar acumulado por pessoa
+create table user_points (
+  user_name text primary key,
+  points integer not null default 0
+);
+```
+
+Depois disso, publique o código atualizado (`git add . && git commit -m "pontos e prazo com hora" && git push`). Se o seu Web Service no Render estiver conectado ao repositório do GitHub, o deploy acontece automaticamente a cada push — acompanhe em **Render > seu serviço > Logs**. Se não estiver conectado (deploy manual), use o botão **"Manual Deploy" > "Deploy latest commit"** no painel do Render.
+
+Não é preciso mudar nenhuma variável de ambiente nem reconfigurar o cron-job.org — o endpoint `/api/check-reminders` continua o mesmo.
+
+No celular, como o PWA já está instalado, basta fechar e abrir o app de novo (ou dar um pull-to-refresh) para carregar a versão nova — não precisa reinstalar.
+
 ## Personalizar o ícone
 
 Os arquivos `public/icon-192.png` e `public/icon-512.png` são placeholders simples. Troque por um ícone próprio (mesmo tamanho e nome de arquivo) quando quiser.

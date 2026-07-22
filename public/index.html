@@ -23,6 +23,10 @@
   .card .meta { font-size:.8rem; color:#777; margin-top:4px; }
   .card button { margin-top:10px; padding:8px 12px; border:none; border-radius:6px; background:#38a169; color:#fff; }
   .empty { color:#888; text-align:center; padding:24px 0; font-size:.9rem; }
+  #leaderboard { display:flex; gap:8px; margin-bottom:12px; }
+  #leaderboard .score { flex:1; background:#fff; border-radius:8px; padding:10px; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,.1); }
+  #leaderboard .score .name { font-size:.8rem; color:#666; }
+  #leaderboard .score .pts { font-size:1.3rem; font-weight:bold; color:#2b6cb0; }
   form { background:#fff; padding:14px; border-radius:8px; margin-top:20px; display:flex; flex-direction:column; gap:10px; }
   form h3 { margin:0 0 4px; }
   input, select, textarea { padding:10px; font-size:1rem; border:1px solid #ccc; border-radius:6px; width:100%; }
@@ -36,6 +40,7 @@
   </div>
 
   <h1>Tarefas</h1>
+  <div id="leaderboard"></div>
   <div class="tabs">
     <button data-type="casa" class="active">🏠 Casa</button>
     <button data-type="conta">💰 Contas</button>
@@ -47,6 +52,8 @@
     <input id="title" placeholder="Título *" required>
     <textarea id="description" placeholder="Descrição (opcional)" rows="2"></textarea>
     <input id="due_date" type="date" required>
+    <select id="due_time" required></select>
+    <input id="points" type="number" min="0" step="1" placeholder="Pontos *" required>
     <select id="assigned_to"></select>
     <button type="submit">Criar tarefa</button>
   </form>
