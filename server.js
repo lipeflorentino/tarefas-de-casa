@@ -62,27 +62,6 @@ app.post('/api/tasks', async (req, res) => {
   res.status(201).json(data[0]);
 });
 
-// concluir (= apagar, sem histórico) tarefa — quem completa ganha os pontos
-app.delete('/api/tasks/:id', async (req, res) => {
-  const { completed_by } = req.body || {};
-
-  const { data: task, error: fetchError } = await supabase
-    .from('tasks')
-    .select('points')
-    .eq('id', req.params.id)
-    .single();
-  if (fetchError) return res.status(500).json({ error: fetchError.message });
-
-  const { error: delError } = await supabase.from('tasks').delete().eq('id', req.params.id);
-  if (delError) return res.status(500).json({ error: delError.message });
-
-  if (completed_by && task && task.points) {
-    await addPoints(completed_by, task.points);
-  }
-
-  res.status(204).end();
-});
-
 async function addPoints(userName, points) {
   const { data } = await supabase
     .from('user_points')
@@ -132,6 +111,66 @@ app.get('/api/check-reminders', async (req, res) => {
   }
 
   res.json({ checked: tasks.length });
+});
+
+// Excluir uma tarefa sem concluir/pontuar (Item 1)
+app.delete('/api/tasks/:id', async (req, res) => {
+  const { error } = await supabase.from('tasks').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.status(204).end();
+});
+
+// Confirmar e Concluir Tarefa (Itens 2 e 3)
+app.post('/api/tasks/:id/confirm', async (req, res) => {
+  const { user_name } = req.body;
+  if (!user_name) return res.status(400).json({ error: 'user_name é obrigatório' });
+
+  // 1. Busca a tarefa
+  const { data: task, error: fetchError } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('id', req.params.id)
+    .single();
+
+  if (fetchError || !task) return res.status(404).json({ error: 'Tarefa não encontrada' });
+
+  // 2. Primeira confirmação (para o cronômetro de atraso)
+  if (!task.first_confirmed_by) {
+    const { error: updateError } = await supabase
+      .from('tasks')
+      .update({
+        first_confirmed_by: user_name,
+        first_confirmed_at: new Date().toISOString()
+      })
+      .eq('id', req.params.id);
+
+    if (updateError) return res.status(500).json({ error: updateError.message });
+    return res.json({ status: 'waiting_second_confirmation' });
+  }
+
+  // Se o mesmo usuário tentar confirmar 2x
+  if (task.first_confirmed_by === user_name) {
+    return res.status(400).json({ error: 'Aguardando a confirmação do outro participante.' });
+  }
+
+  // 3. Segunda confirmação — Calcular penalidade por atraso (10 min = -1 pt)
+  const dueDate = new Date(task.due_date);
+  const stopDate = new Date(task.first_confirmed_at); // O tempo travou na 1ª confirmação
+  
+  let finalPoints = task.points;
+
+  if (stopDate > dueDate) {
+    const diffInMinutes = Math.floor((stopDate - dueDate) / (1000 * 60));
+    const periodsOf10Min = Math.floor(diffInMinutes / 10);
+    // Subtrai pontos mesmo que o valor fique negativo
+    finalPoints -= periodsOf10Min; 
+  }
+
+  // 4. Atribui pontos ao responsável original e exclui a tarefa concluída
+  await addPoints(task.assigned_to, finalPoints);
+  await supabase.from('tasks').delete().eq('id', req.params.id);
+
+  res.json({ status: 'completed', pointsEarned: finalPoints });
 });
 
 async function notifyUser(userName, title, body) {

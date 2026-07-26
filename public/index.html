@@ -39,6 +39,20 @@
     <select id="who"></select>
   </div>
 
+  <div id="user-display" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+    <span id="current-user-label"></span>
+    <button onclick="changeUser()" style="background: none; border: underline; color: #2b6cb0; cursor: pointer;">Trocar usuário</button>
+  </div>
+
+  <script>
+    function changeUser() {
+      localStorage.removeItem('who');
+      document.getElementById('who').value = '';
+      document.getElementById('current-user-label').textContent = '';
+      document.getElementById('user-select').style.display = 'flex';
+    }
+  </script>
+
   <h1>Tarefas</h1>
   <div id="leaderboard"></div>
   <div class="tabs">

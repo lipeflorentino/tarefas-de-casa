@@ -19,17 +19,27 @@ async function loadConfig() {
 
   const who = document.getElementById('who');
   const assigned = document.getElementById('assigned_to');
+  
+  who.innerHTML = '<option value="">-- Selecione seu nome --</option>';
   users.forEach(u => {
     who.innerHTML += `<option value="${u}">${u}</option>`;
     assigned.innerHTML += `<option value="${u}">${u}</option>`;
   });
 
   const saved = localStorage.getItem('who');
-  if (saved) who.value = saved;
+  if (saved) {
+    who.value = saved;
+    document.getElementById('user-select').style.display = 'none';
+    document.getElementById('current-user-label').textContent = `Usuário atual: ${saved}`;
+  }
 
   who.addEventListener('change', () => {
-    localStorage.setItem('who', who.value);
-    registerPush();
+    if (who.value) {
+      localStorage.setItem('who', who.value);
+      document.getElementById('user-select').style.display = 'none';
+      document.getElementById('current-user-label').textContent = `Usuário atual: ${who.value}`;
+      registerPush();
+    }
   });
 }
 
@@ -48,6 +58,7 @@ async function loadTasks() {
   const res = await fetch('/api/tasks');
   const tasks = await res.json();
   const list = document.getElementById('list');
+  const currentUser = localStorage.getItem('who');
   list.innerHTML = '';
 
   const now = new Date();
@@ -60,36 +71,84 @@ async function loadTasks() {
 
   filtered.forEach(t => {
     const dueDate = new Date(t.due_date);
-    const overdue = dueDate < now;
+    // Se já houve 1ª confirmação, congela a contagem do tempo na data informada
+    const checkDate = t.first_confirmed_at ? new Date(t.first_confirmed_at) : now;
+    const overdue = dueDate < checkDate;
+
+    // Cálculo dinâmico de exibição dos pontos atuais (prevendo penalidade)
+    let displayPoints = t.points;
+    if (overdue) {
+      const diffMin = Math.floor((checkDate - dueDate) / (1000 * 60));
+      const penalty = Math.floor(diffMin / 10);
+      displayPoints -= penalty;
+    }
+
     const prazoFormatado = dueDate.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     const div = document.createElement('div');
     div.className = 'card' + (overdue ? ' overdue' : '');
+
+    let btnText = '✅ Concluir';
+    let btnDisabled = false;
+
+    if (t.first_confirmed_by) {
+      if (t.first_confirmed_by === currentUser) {
+        btnText = '⏳ Aguardando 2ª confirmação...';
+        btnDisabled = true;
+      } else {
+        btnText = '✔️ Confirmar e Finalizar';
+      }
+    }
+
     div.innerHTML = `
       <h3>${escapeHtml(t.title)}</h3>
       ${t.description ? `<p>${escapeHtml(t.description)}</p>` : ''}
-      <div class="meta">Prazo: ${prazoFormatado} • Responsável: ${escapeHtml(t.assigned_to)} • ${t.points} pts</div>
-      <button>✅ Concluir</button>
+      <div class="meta">
+        Prazo: ${prazoFormatado} • Responsável: ${escapeHtml(t.assigned_to)} • 
+        <b>${displayPoints} pts</b> ${displayPoints < t.points ? '(Atrasada)' : ''}
+      </div>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button class="btn-confirm" ${btnDisabled ? 'disabled' : ''}>${btnText}</button>
+        <button class="btn-delete" style="background:#e53e3e;">🗑️ Excluir</button>
+      </div>
     `;
-    div.querySelector('button').addEventListener('click', () => completeTask(t.id));
+
+    div.querySelector('.btn-confirm').addEventListener('click', () => confirmTask(t.id));
+    div.querySelector('.btn-delete').addEventListener('click', () => deleteTask(t.id));
+    
     list.appendChild(div);
   });
+}
+
+// Confirmar tarefa
+async function confirmTask(id) {
+  const user_name = localStorage.getItem('who');
+  if (!user_name) {
+    alert('Por favor, selecione quem está acessando!');
+    return;
+  }
+
+  await fetch(`/api/tasks/${id}/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_name })
+  });
+  
+  loadTasks();
+  loadPoints();
+}
+
+// Excluir tarefa sem pontuar (Item 1)
+async function deleteTask(id) {
+  if (!confirm('Deseja realmente apagar esta tarefa?')) return;
+  
+  await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+  loadTasks();
 }
 
 function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
-}
-
-async function completeTask(id) {
-  const completed_by = document.getElementById('who').value;
-  await fetch(`/api/tasks/${id}`, {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ completed_by })
-  });
-  loadTasks();
-  loadPoints();
 }
 
 document.querySelectorAll('.tabs button').forEach(btn => {
