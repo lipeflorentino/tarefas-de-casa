@@ -99,7 +99,11 @@ app.get('/api/check-reminders', async (req, res) => {
     .from('tasks')
     .select('*')
     .lte('due_date', endOfToday.toISOString());
-  if (error) return res.status(500).json({ error: error.message });
+
+  if (error) {
+    console.error('Erro ao verificar lembretes:', error.message);
+    return res.status(500).json({ error: error.message });
+  }
 
   for (const task of tasks) {
     const dueDate = new Date(task.due_date);
@@ -110,7 +114,8 @@ app.get('/api/check-reminders', async (req, res) => {
     await notifyUser(task.assigned_to, `${label}: ${task.title}`, corpo);
   }
 
-  res.json({ checked: tasks.length });
+  // Retorna apenas uma resposta bem enxuta para economizar bytes
+  res.status(200).send('OK');
 });
 
 // Excluir uma tarefa sem concluir/pontuar (Item 1)
