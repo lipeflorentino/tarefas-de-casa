@@ -1,5 +1,6 @@
 function populateTimeOptions() {
   const select = document.getElementById('due_time');
+  select.innerHTML = '';
   for (let h = 0; h < 24; h++) {
     for (let m of [0, 30]) {
       const hh = String(h).padStart(2, '0');
@@ -21,6 +22,7 @@ async function loadConfig() {
   const assigned = document.getElementById('assigned_to');
   
   who.innerHTML = '<option value="">-- Selecione seu nome --</option>';
+  assigned.innerHTML = '';
   users.forEach(u => {
     who.innerHTML += `<option value="${u}">${u}</option>`;
     assigned.innerHTML += `<option value="${u}">${u}</option>`;
@@ -54,6 +56,18 @@ async function loadPoints() {
   }).join('');
 }
 
+async function renderMainContent() {
+  if (currentType === 'casa') {
+    document.getElementById('task-form').style.display = 'flex';
+    document.getElementById('request-form').style.display = 'none';
+    await loadTasks();
+  } else if (currentType === 'pedidos') {
+    document.getElementById('task-form').style.display = 'none';
+    document.getElementById('request-form').style.display = 'flex';
+    await loadRequests();
+  }
+}
+
 async function loadTasks() {
   const res = await fetch('/api/tasks');
   const tasks = await res.json();
@@ -62,20 +76,17 @@ async function loadTasks() {
   list.innerHTML = '';
 
   const now = new Date();
-  const filtered = tasks.filter(t => t.type === currentType);
 
-  if (filtered.length === 0) {
-    list.innerHTML = '<div class="empty">Nenhuma tarefa por aqui 🎉</div>';
+  if (!tasks || tasks.length === 0) {
+    list.innerHTML = '<div class="empty">Nenhuma tarefa de casa pendente 🎉</div>';
     return;
   }
 
-  filtered.forEach(t => {
+  tasks.forEach(t => {
     const dueDate = new Date(t.due_date);
-    // Se já houve 1ª confirmação, congela a contagem do tempo na data informada
     const checkDate = t.first_confirmed_at ? new Date(t.first_confirmed_at) : now;
     const overdue = dueDate < checkDate;
 
-    // Cálculo dinâmico de exibição dos pontos atuais (prevendo penalidade)
     let displayPoints = t.points;
     if (overdue) {
       const diffMin = Math.floor((checkDate - dueDate) / (1000 * 60));
@@ -119,7 +130,44 @@ async function loadTasks() {
   });
 }
 
-// Confirmar tarefa
+// Carregar e listar os Pedidos
+async function loadRequests() {
+  const res = await fetch('/api/requests');
+  const requests = await res.json();
+  const list = document.getElementById('list');
+  list.innerHTML = '';
+
+  if (!requests || requests.length === 0) {
+    list.innerHTML = '<div class="empty">Nenhum pedido cadastrado 🛒</div>';
+    return;
+  }
+
+  requests.forEach(r => {
+    const valorFormatado = Number(r.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const div = document.createElement('div');
+    div.className = 'card';
+
+    div.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <h3>${escapeHtml(r.title)}</h3>
+        <span class="badge badge-${r.payment_type}">${r.payment_type}</span>
+      </div>
+      ${r.description ? `<p>${escapeHtml(r.description)}</p>` : ''}
+      <div class="meta" style="font-size:0.9rem; color:#333; margin-top:6px;">
+        <b>Valor:</b> ${valorFormatado} | <b>Prazo:</b> ${escapeHtml(r.deadline)}
+      </div>
+      <div class="meta">Solicitado por: ${escapeHtml(r.created_by)}</div>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button class="btn-delete-req" style="background:#e53e3e;">🗑️ Excluir</button>
+      </div>
+    `;
+
+    div.querySelector('.btn-delete-req').addEventListener('click', () => deleteRequest(r.id));
+    list.appendChild(div);
+  });
+}
+
+// Confirmar tarefa de casa
 async function confirmTask(id) {
   const user_name = localStorage.getItem('who');
   if (!user_name) {
@@ -137,12 +185,18 @@ async function confirmTask(id) {
   loadPoints();
 }
 
-// Excluir tarefa sem pontuar (Item 1)
+// Excluir tarefa de casa
 async function deleteTask(id) {
   if (!confirm('Deseja realmente apagar esta tarefa?')) return;
-  
   await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
   loadTasks();
+}
+
+// Excluir pedido
+async function deleteRequest(id) {
+  if (!confirm('Deseja realmente apagar este pedido?')) return;
+  await fetch(`/api/requests/${id}`, { method: 'DELETE' });
+  loadRequests();
 }
 
 function escapeHtml(str) {
@@ -151,24 +205,26 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// Alternância de Abas
 document.querySelectorAll('.tabs button').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     currentType = btn.dataset.type;
-    loadTasks();
+    renderMainContent();
   });
 });
 
+// Submit: Tarefas de Casa
 document.getElementById('task-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const dateVal = document.getElementById('due_date').value; // ex: 2026-07-22
-  const timeVal = document.getElementById('due_time').value; // ex: 14:30
+  const dateVal = document.getElementById('due_date').value;
+  const timeVal = document.getElementById('due_time').value;
   const body = {
     title: document.getElementById('title').value,
     description: document.getElementById('description').value,
     due_date: new Date(`${dateVal}T${timeVal}`).toISOString(),
-    type: currentType,
+    type: 'casa',
     assigned_to: document.getElementById('assigned_to').value,
     points: Number(document.getElementById('points').value)
   };
@@ -181,7 +237,35 @@ document.getElementById('task-form').addEventListener('submit', async (e) => {
   loadTasks();
 });
 
-// --- Notificações push ---
+// Submit: Pedido Financeiro
+document.getElementById('request-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const user_name = localStorage.getItem('who');
+  if (!user_name) {
+    alert('Por favor, selecione seu usuário no topo da página antes de criar um pedido!');
+    return;
+  }
+
+  const body = {
+    title: document.getElementById('req_title').value,
+    description: document.getElementById('req_description').value,
+    amount: document.getElementById('req_amount').value,
+    deadline: document.getElementById('req_deadline').value,
+    payment_type: document.getElementById('req_payment_type').value,
+    created_by: user_name
+  };
+
+  await fetch('/api/requests', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  e.target.reset();
+  loadRequests();
+});
+
+// Push Notifications
 async function registerPush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
   const who = document.getElementById('who').value;
@@ -219,7 +303,7 @@ function urlBase64ToUint8Array(base64String) {
 
 loadConfig().then(() => {
   populateTimeOptions();
-  loadTasks();
+  renderMainContent();
   loadPoints();
   registerPush();
 });

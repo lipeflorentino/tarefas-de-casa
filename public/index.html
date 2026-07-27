@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Tarefas de Casa</title>
+<title>Tarefas e Pedidos</title>
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" href="/icon-192.png">
 <meta name="theme-color" content="#2b6cb0">
@@ -14,14 +14,14 @@
   #user-select { margin-bottom: 16px; display:flex; align-items:center; gap:8px; }
   #user-select select { padding:6px; flex:1; }
   .tabs { display:flex; gap:8px; margin-bottom:12px; }
-  .tabs button { flex:1; padding:10px; border:none; border-radius:6px; background:#ddd; font-size:.95rem; }
+  .tabs button { flex:1; padding:10px; border:none; border-radius:6px; background:#ddd; font-size:.95rem; cursor:pointer; }
   .tabs button.active { background:#2b6cb0; color:#fff; }
   .card { background:#fff; border-radius:8px; padding:12px; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,.1); }
   .card.overdue { border-left:4px solid #e53e3e; }
   .card h3 { margin:0 0 4px; font-size:1.05rem; }
   .card p { margin:4px 0; font-size:.9rem; color:#444; }
   .card .meta { font-size:.8rem; color:#777; margin-top:4px; }
-  .card button { margin-top:10px; padding:8px 12px; border:none; border-radius:6px; background:#38a169; color:#fff; }
+  .card button { margin-top:10px; padding:8px 12px; border:none; border-radius:6px; background:#38a169; color:#fff; cursor:pointer; }
   .empty { color:#888; text-align:center; padding:24px 0; font-size:.9rem; }
   #leaderboard { display:flex; gap:8px; margin-bottom:12px; }
   #leaderboard .score { flex:1; background:#fff; border-radius:8px; padding:10px; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,.1); }
@@ -30,7 +30,10 @@
   form { background:#fff; padding:14px; border-radius:8px; margin-top:20px; display:flex; flex-direction:column; gap:10px; }
   form h3 { margin:0 0 4px; }
   input, select, textarea { padding:10px; font-size:1rem; border:1px solid #ccc; border-radius:6px; width:100%; }
-  form button[type=submit] { padding:12px; background:#2b6cb0; color:#fff; border:none; border-radius:6px; font-size:1rem; }
+  form button[type=submit] { padding:12px; background:#2b6cb0; color:#fff; border:none; border-radius:6px; font-size:1rem; cursor:pointer; }
+  .badge { display:inline-block; padding:2px 6px; border-radius:4px; font-size:0.75rem; font-weight:bold; color:#fff; text-transform:uppercase; }
+  .badge-credito { background-color: #805ad5; }
+  .badge-debito { background-color: #dd6b20; }
 </style>
 </head>
 <body>
@@ -41,7 +44,7 @@
 
   <div id="user-display" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
     <span id="current-user-label"></span>
-    <button onclick="changeUser()" style="background: none; border: underline; color: #2b6cb0; cursor: pointer;">Trocar usuário</button>
+    <button onclick="changeUser()" style="background: none; border: none; text-decoration: underline; color: #2b6cb0; cursor: pointer;">Trocar usuário</button>
   </div>
 
   <script>
@@ -53,16 +56,19 @@
     }
   </script>
 
-  <h1>Tarefas</h1>
+  <h1>Painel</h1>
   <div id="leaderboard"></div>
+
   <div class="tabs">
     <button data-type="casa" class="active">🏠 Casa</button>
-    <button data-type="conta">💰 Contas</button>
+    <button data-type="pedidos">💰 Pedidos</button>
   </div>
+
   <div id="list"></div>
 
+  <!-- Formulário de Tarefa Casa -->
   <form id="task-form">
-    <h3>Nova tarefa</h3>
+    <h3>Nova Tarefa de Casa</h3>
     <input id="title" placeholder="Título *" required>
     <textarea id="description" placeholder="Descrição (opcional)" rows="2"></textarea>
     <input id="due_date" type="date" required>
@@ -70,6 +76,30 @@
     <input id="points" type="number" min="0" step="1" placeholder="Pontos *" required>
     <select id="assigned_to"></select>
     <button type="submit">Criar tarefa</button>
+  </form>
+
+  <!-- Formulário de Pedido (Oculto por padrão) -->
+  <form id="request-form" style="display:none;">
+    <h3>Novo Pedido</h3>
+    <input id="req_title" placeholder="Nome do item/pedido *" required>
+    <textarea id="req_description" placeholder="Descrição (opcional)" rows="2"></textarea>
+    <input id="req_amount" type="number" step="0.01" min="0" placeholder="Valor em R$ *" required>
+    
+    <label style="font-size: 0.85rem; color: #555;">Prazo:</label>
+    <select id="req_deadline" required>
+      <option value="imediato">Imediato</option>
+      <option value="mês">Mês</option>
+      <option value="semestre">Semestre</option>
+      <option value="ano">Ano</option>
+    </select>
+
+    <label style="font-size: 0.85rem; color: #555;">Tipo de Pagamento:</label>
+    <select id="req_payment_type" required>
+      <option value="credito">Crédito</option>
+      <option value="debito">Débito</option>
+    </select>
+
+    <button type="submit">Enviar pedido</button>
   </form>
 
   <script src="/app.js"></script>

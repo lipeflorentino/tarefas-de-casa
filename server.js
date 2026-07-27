@@ -178,6 +178,53 @@ app.post('/api/tasks/:id/confirm', async (req, res) => {
   res.json({ status: 'completed', pointsEarned: finalPoints });
 });
 
+// Listar todos os pedidos
+app.get('/api/requests', async (req, res) => {
+  const { data, error } = await supabase
+    .from('requests')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// Criar um pedido
+app.post('/api/requests', async (req, res) => {
+  const { title, description, amount, deadline, payment_type, created_by } = req.body;
+  
+  if (!title || amount === undefined || amount === null || !deadline || !payment_type || !created_by) {
+    return res.status(400).json({ error: 'Campos obrigatórios ausentes.' });
+  }
+
+  const { data, error } = await supabase
+    .from('requests')
+    .insert([{ 
+      title, 
+      description: description || null, 
+      amount: Number(amount), 
+      deadline, 
+      payment_type, 
+      created_by 
+    }])
+    .select();
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  // Notifica o outro usuário sobre o novo pedido
+  const valorFormatado = Number(amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  // Envia notificação geral ou para quem for diferente de created_by
+  await notifyUser(created_by === 'Eu' ? 'Esposa' : 'Eu', 'Novo Pedido Financeiro', `${title} — ${valorFormatado} (${deadline})`);
+
+  res.status(201).json(data[0]);
+});
+
+// Excluir um pedido
+app.delete('/api/requests/:id', async (req, res) => {
+  const { error } = await supabase.from('requests').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.status(204).end();
+});
+
 async function notifyUser(userName, title, body) {
   const { data, error } = await supabase
     .from('push_subscriptions')
