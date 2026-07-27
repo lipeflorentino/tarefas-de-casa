@@ -225,6 +225,43 @@ app.delete('/api/requests/:id', async (req, res) => {
   res.status(204).end();
 });
 
+// Aprovar um pedido
+app.post('/api/requests/:id/approve', async (req, res) => {
+  const { user_name } = req.body;
+  if (!user_name) return res.status(400).json({ error: 'user_name é obrigatório' });
+
+  // 1. Busca o pedido
+  const { data: request, error: fetchError } = await supabase
+    .from('requests')
+    .select('*')
+    .eq('id', req.params.id)
+    .single();
+
+  if (fetchError || !request) return res.status(404).json({ error: 'Pedido não encontrado' });
+
+  // 2. Valida se quem está tentando aprovar é o criador
+  if (request.created_by === user_name) {
+    return res.status(400).json({ error: 'Você não pode aprovar seu próprio pedido.' });
+  }
+
+  // 3. Atualiza o status do pedido para "aprovado"
+  const { data, error } = await supabase
+    .from('requests')
+    .update({
+      status: 'aprovado',
+      approved_by: user_name
+    })
+    .eq('id', req.params.id)
+    .select();
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  // Notifica o criador do pedido que foi aprovado
+  await notifyUser(request.created_by, 'Pedido Aprovado! ✅', `${request.title} foi aprovado por ${user_name}.`);
+
+  res.json(data[0]);
+});
+
 async function notifyUser(userName, title, body) {
   const { data, error } = await supabase
     .from('push_subscriptions')

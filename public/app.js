@@ -135,6 +135,7 @@ async function loadRequests() {
   const res = await fetch('/api/requests');
   const requests = await res.json();
   const list = document.getElementById('list');
+  const currentUser = localStorage.getItem('who');
   list.innerHTML = '';
 
   if (!requests || requests.length === 0) {
@@ -144,27 +145,72 @@ async function loadRequests() {
 
   requests.forEach(r => {
     const valorFormatado = Number(r.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const isOwner = r.created_by === currentUser;
+    const isApproved = r.status === 'aprovado';
+
     const div = document.createElement('div');
     div.className = 'card';
 
+    // Ações dos botões
+    let actionButtonsHTML = '';
+    if (isApproved) {
+      actionButtonsHTML = `<span style="color:#2f855a; font-weight:bold; align-self:center;">✅ Aprovado por ${escapeHtml(r.approved_by || '')}</span>`;
+    } else if (isOwner) {
+      actionButtonsHTML = `<span style="color:#718096; font-size:0.85rem; align-self:center;">⏳ Aguardando aprovação</span>`;
+    } else {
+      actionButtonsHTML = `<button class="btn-approve-req" style="background:#319795; color:#fff; padding:8px 12px; border:none; border-radius:6px; cursor:pointer;">👍 Aprovar</button>`;
+    }
+
     div.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
         <h3>${escapeHtml(r.title)}</h3>
-        <span class="badge badge-${r.payment_type}">${r.payment_type}</span>
+        <div style="display:flex; gap:4px; flex-shrink:0;">
+          <span class="badge badge-status-${r.status}">${r.status}</span>
+          <span class="badge badge-${r.payment_type}">${r.payment_type}</span>
+        </div>
       </div>
       ${r.description ? `<p>${escapeHtml(r.description)}</p>` : ''}
       <div class="meta" style="font-size:0.9rem; color:#333; margin-top:6px;">
         <b>Valor:</b> ${valorFormatado} | <b>Prazo:</b> ${escapeHtml(r.deadline)}
       </div>
       <div class="meta">Solicitado por: ${escapeHtml(r.created_by)}</div>
-      <div style="display:flex; gap:8px; margin-top:10px;">
-        <button class="btn-delete-req" style="background:#e53e3e;">🗑️ Excluir</button>
+      
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; pt-8px; border-top:1px solid #eee;">
+        <div>${actionButtonsHTML}</div>
+        <button class="btn-delete-req" style="background:#e53e3e; color:#fff; padding:8px 12px; border:none; border-radius:6px; cursor:pointer;">🗑️ Excluir</button>
       </div>
     `;
 
+    if (!isApproved && !isOwner) {
+      div.querySelector('.btn-approve-req').addEventListener('click', () => approveRequest(r.id));
+    }
     div.querySelector('.btn-delete-req').addEventListener('click', () => deleteRequest(r.id));
+
     list.appendChild(div);
   });
+}
+
+// Função de Aprovação do Pedido
+async function approveRequest(id) {
+  const user_name = localStorage.getItem('who');
+  if (!user_name) {
+    alert('Por favor, selecione quem está acessando!');
+    return;
+  }
+
+  const res = await fetch(`/api/requests/${id}/approve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_name })
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    alert(err.error || 'Erro ao aprovar pedido');
+    return;
+  }
+
+  loadRequests();
 }
 
 // Confirmar tarefa de casa
