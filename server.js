@@ -102,7 +102,7 @@ app.get('/api/check-reminders', async (req, res) => {
 
   if (error) {
     console.error('Erro ao verificar lembretes:', error.message);
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: 'Erro ao verificar lembretes' });
   }
 
   for (const task of tasks) {
@@ -111,8 +111,11 @@ app.get('/api/check-reminders', async (req, res) => {
     const label = overdue ? 'ATRASADA' : 'VENCE HOJE';
     const horario = dueDate.toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const corpo = `${task.description || ''} (${horario}, ${task.points} pts)`.trim();
+    console.log("Enviando notificação para", task.assigned_to, ":", label, task.title);
     await notifyUser(task.assigned_to, `${label}: ${task.title}`, corpo);
   }
+
+  console.log("Tudo ok");
 
   // Retorna apenas uma resposta bem enxuta para economizar bytes
   res.status(200).send('OK');
